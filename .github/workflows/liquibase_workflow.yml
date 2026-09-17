@@ -115,6 +115,15 @@ jobs:
       uses: actions/checkout@v7
 
     ###
+    ### Install Java (required by Liquibase)
+    ###
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: "17"
+
+    ###
     ### Setup and run Liquibase
     ###
     - name: Setup Liquibase
