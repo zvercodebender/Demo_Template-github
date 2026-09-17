@@ -1,0 +1,56 @@
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="ddl_create_table_users" author="rbroker" labels="release-2.0.0">
+        <comment>Release 2.0.0</comment>
+        <createTable tableName="USERS">
+            <column name="ID" type="INT">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="NAME" type="VARCHAR(200)"/>
+            <column name="INDUSTRY" type="VARCHAR(400)"/>
+            <column name="EMPLOYEE_COUNT" type="INT"/>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="dml_insert_users" author="rbroker" labels="release-2.0.0">
+        <comment>Release 2.0.0</comment>
+        <insert tableName="USERS">
+            <column name="ID" valueNumeric="1"/>
+            <column name="NAME" value="Acme Corporation"/>
+            <column name="INDUSTRY" value="Explosives"/>
+            <column name="EMPLOYEE_COUNT" valueNumeric="1"/>
+        </insert>
+        <insert tableName="USERS">
+            <column name="ID" valueNumeric="2"/>
+            <column name="NAME" value="Initech"/>
+            <column name="INDUSTRY" value="Y2K"/>
+            <column name="EMPLOYEE_COUNT" valueNumeric="50"/>
+        </insert>
+        <insert tableName="USERS">
+            <column name="ID" valueNumeric="3"/>
+            <column name="NAME" value="Umbrella Corporation"/>
+            <column name="INDUSTRY" value="Zombies"/>
+            <column name="EMPLOYEE_COUNT" valueNumeric="10000"/>
+        </insert>
+        <insert tableName="USERS">
+            <column name="ID" valueNumeric="4"/>
+            <column name="NAME" value="Soylent Corp"/>
+            <column name="INDUSTRY" value="People"/>
+            <column name="EMPLOYEE_COUNT" valueNumeric="100"/>
+        </insert>
+        <insert tableName="USERS">
+            <column name="ID" valueNumeric="5"/>
+            <column name="NAME" value="Globex Corp"/>
+            <column name="INDUSTRY" value="Widgets"/>
+            <column name="EMPLOYEE_COUNT" valueNumeric="5000"/>
+        </insert>
+        <rollback>
+            <sql>DELETE FROM USERS WHERE ID BETWEEN 1 AND 5</sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

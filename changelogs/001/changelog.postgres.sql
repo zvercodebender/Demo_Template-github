@@ -94,7 +94,7 @@ $$ LANGUAGE plpgsql;
 UPDATE EMPLOYEES SET EMAIL_ADDRESS = 'taylor.morgan2@example.com' WHERE ID = 1;
 --rollback UPDATE EMPLOYEES SET EMAIL_ADDRESS = 'redacted@example.com' WHERE ID = 1;
 
---changeset mikeo:dcl_grant_employee_guest labels:jira-1412,release-1.0.3
---comment Release 1.0.3
-GRANT SELECT ON EMPLOYEES TO guest;
---rollback REVOKE SELECT ON EMPLOYEES FROM guest;
+-- --changeset mikeo:dcl_grant_employee_guest labels:jira-1412,release-1.0.3
+-- --comment Release 1.0.3
+-- GRANT SELECT ON EMPLOYEES TO guest;
+-- --rollback REVOKE SELECT ON EMPLOYEES FROM guest;
