@@ -84,8 +84,8 @@ globalVariables:
   ### These reports can be copied to a shared location for distribution to users (e.g., S3, Azure Blob Storage)
   ### https://docs.liquibase.com/secure/user-guide-5-0/what-are-operation-reports
   ###
-  CHECKS_REPORT: "Checks_${LB_ENVIRONMENT}.html"
-  UPDATE_REPORT: "Update_${LB_ENVIRONMENT}.html"
+  CHECKS_REPORT: "reports/Checks_${LB_ENVIRONMENT}.html"
+  UPDATE_REPORT: "reports/Update_${LB_ENVIRONMENT}.html"
   ###
   ### Workflow features
   ### Set these flags to T/F to turn Liquibase Secure features on/off

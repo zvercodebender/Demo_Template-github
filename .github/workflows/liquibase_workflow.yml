@@ -105,7 +105,7 @@ env:
 
 jobs:
   liquibase-workflow:
-    runs-on: self-hosted
+    runs-on: demo-template-github-runners
 
     steps:
     ###
