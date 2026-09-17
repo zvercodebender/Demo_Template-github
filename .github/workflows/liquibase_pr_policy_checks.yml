@@ -1,0 +1,264 @@
+###
+### PR gate: runs Liquibase policy checks against changelog.main.xml whenever
+### a PR touches the changelog or its included changesets, and comments the
+### results directly on the PR. Read-only by design - never runs
+### update/rollback.
+###
+### This repo has a single changelog and a single target database (Postgres,
+### via LIQUIBASE_COMMAND_URL/USERNAME/PASSWORD secrets - same pattern as
+### liquibase_workflow.yml), so unlike a multi-schema/multi-environment setup
+### there's no matrix to compute and no Vault lookup involved. The job still
+### needs the self-hosted runner for direct network access to the database,
+### since checks-scope below includes "database" checks.
+###
+
+name: Liquibase PR Policy Checks
+
+on:
+  pull_request:
+    paths:
+      - 'changelog.main.xml'
+      - 'changelogs/**'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  policy-check:
+    runs-on: demo-template-github-runners
+    timeout-minutes: 30
+
+    env:
+      LIQUIBASE_COMMAND_CHECKS_RUN_CHECKS_SCRIPTS_ENABLED: true
+      LIQUIBASE_LOG_FORMAT: json_pretty
+      LIQUIBASE_LOG_LEVEL: warning
+      LIQUIBASE_SHOW_BANNER: false
+      LIQUIBASE_ANALYTICS_ENABLED: false
+      LIQUIBASE_LICENSE_KEY: ${{ secrets.LIQUIBASE_LICENSE_KEY }}
+
+      LIQUIBASE_COMMAND_CHANGELOG_FILE: changelog.main.xml
+      LIQUIBASE_SEARCH_PATH: ./
+
+      ###
+      ### These values should be pulled from a vault - same pattern as
+      ### liquibase_workflow.yml
+      ###
+      LIQUIBASE_COMMAND_URL: ${{ secrets.LIQUIBASE_COMMAND_URL }}
+      LIQUIBASE_COMMAND_USERNAME: ${{ secrets.LIQUIBASE_COMMAND_USERNAME }}
+      LIQUIBASE_COMMAND_PASSWORD: ${{ secrets.LIQUIBASE_COMMAND_PASSWORD }}
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v7
+
+    - name: Setup Java (attempt 1)
+      id: sj1
+      timeout-minutes: 10
+      continue-on-error: true
+      uses: actions/setup-java@v5
+      with:
+        distribution: temurin
+        java-version: "17"
+
+    - name: Setup Java (attempt 2)
+      id: sj2
+      if: steps.sj1.outcome == 'failure'
+      timeout-minutes: 10
+      continue-on-error: true
+      uses: actions/setup-java@v5
+      with:
+        distribution: temurin
+        java-version: "17"
+
+    - name: Setup Java (attempt 3)
+      id: sj3
+      if: steps.sj1.outcome == 'failure' && steps.sj2.outcome == 'failure'
+      timeout-minutes: 10
+      uses: actions/setup-java@v5
+      with:
+        distribution: temurin
+        java-version: "17"
+
+    - name: Setup Liquibase (attempt 1)
+      id: sl1
+      timeout-minutes: 10
+      continue-on-error: true
+      uses: liquibase/setup-liquibase@v3.0.0
+      with:
+        edition: "secure"
+        version: "5.2.1"
+
+    - name: Setup Liquibase (attempt 2)
+      id: sl2
+      if: steps.sl1.outcome == 'failure'
+      timeout-minutes: 10
+      continue-on-error: true
+      uses: liquibase/setup-liquibase@v3.0.0
+      with:
+        edition: "secure"
+        version: "5.2.1"
+
+    - name: Setup Liquibase (attempt 3)
+      id: sl3
+      if: steps.sl1.outcome == 'failure' && steps.sl2.outcome == 'failure'
+      timeout-minutes: 10
+      uses: liquibase/setup-liquibase@v3.0.0
+      with:
+        edition: "secure"
+        version: "5.2.1"
+
+    # Read-only: policy checks only, never update/rollback. continue-on-error
+    # here is deliberate - a violation should still get commented on the PR,
+    # not just silently fail the job before the comment step runs.
+    # --report-enabled/--report-* produce the human-readable HTML artifact;
+    # --format=json --output-file=... is the documented, explicit way to get
+    # structured output.
+    - name: Run policy checks
+      id: checks
+      continue-on-error: true
+      run: |
+        liquibase checks run \
+          --checks-scope="changelog, database" \
+          --changeset-filter=pending \
+          --report-enabled=true \
+          --report-path=. \
+          --report-name="Checks.html" \
+          --format=json \
+          --output-file=checks-report.json
+
+    # Turns checks-report.json into a markdown table: one row per issue, with
+    # a colored severity badge. Liquibase's docs describe a flat top-level
+    # {issues, issueCount, changesetsValidatedCount, ...} shape; some versions
+    # instead produce a nested
+    # .policyChecksReport.checksReport[].changelogChecks[]/.databaseChecks[]
+    # shape. This handles both rather than guess wrong.
+    - name: Build PR comment
+      if: always()
+      run: |
+        if ! command -v jq >/dev/null; then
+          echo "jq not found on this runner; downloading a local copy (no root required)..."
+          mkdir -p .bin
+          curl -fsSLk -o .bin/jq https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-linux-amd64
+          chmod +x .bin/jq
+          export PATH="$PWD/.bin:$PATH"
+        fi
+
+        REPORT="checks-report.json"
+        if [ ! -s "$REPORT" ]; then
+          echo "### Liquibase Policy Checks" > comment-body.md
+          echo "" >> comment-body.md
+          echo "⚠️ No JSON checks report was found after running \`liquibase checks run\` (see the job log and the uploaded artifact for what files were actually produced)." >> comment-body.md
+          exit 0
+        fi
+
+        jq -r '
+          def sev_word:
+            if type == "number" then
+              if . == 4 then "BLOCKER" elif . == 3 then "CRITICAL"
+              elif . == 2 then "MAJOR" elif . == 1 then "MINOR"
+              else "INFO" end
+            else . end;
+          def sev_rank(s):
+            if s == "BLOCKER" then 4 elif s == "CRITICAL" then 3
+            elif s == "MAJOR" then 2 elif s == "MINOR" then 1 else 0 end;
+          def sev_emoji(s):
+            if s == "BLOCKER" then "🔴" elif s == "CRITICAL" then "🟠"
+            elif s == "MAJOR" then "🟡" elif s == "MINOR" then "🔵" else "⚪" end;
+
+          (.policyChecksReport.checksReport // empty) as $nested |
+          (if $nested then
+            ([$nested[]?.changelogChecks[]?]) as $cl |
+            ([$nested[]?.databaseChecks[]?]) as $db |
+            {
+              changelogIssueCount: (($cl | map(.issueCount) | add) // 0),
+              changesetsValidated: (($cl | map(.changesetsValidatedCount) | add) // 0),
+              databaseIssueCount: (($db | map(.issueCount) | add) // 0),
+              objectsValidated: (($db | map(.databaseObjectsValidatedCount) | add) // 0),
+              issues: ([$cl[].issues[]?] + [$db[].issues[]?])
+            }
+          else
+            {
+              changelogIssueCount: (.issueCount // 0),
+              changesetsValidated: (.changesetsValidatedCount // 0),
+              databaseIssueCount: 0,
+              objectsValidated: 0,
+              issues: (.issues // [])
+            }
+          end) as $data |
+
+          ($data.issues | map(. + {checkSeverity: (.checkSeverity | sev_word)}) | sort_by(-sev_rank(.checkSeverity))) as $allIssues |
+
+          "### Liquibase Policy Checks\n\n" +
+          "**\($data.changelogIssueCount) changelog issue(s)** across **\($data.changesetsValidated) changeset(s)** validated · " +
+          "**\($data.databaseIssueCount) database issue(s)** across **\($data.objectsValidated) database object(s)** validated\n" +
+          (if ($allIssues | length) > 0 then
+            "\n| Severity | Check | Changeset | Message |\n|---|---|---|---|\n" +
+            ($allIssues | map(
+              "| " + sev_emoji(.checkSeverity) + " " + .checkSeverity +
+              " | " + (.checkShortName // .checkName // "-") +
+              " | " + (.changesetId // "-") + (if .changesetAuthor then " (" + .changesetAuthor + ")" else "" end) +
+              " | " + (.checkMessage | gsub("[\r\n]+";" ")) + " |"
+            ) | join("\n"))
+          else
+            "\nNo policy issues found. ✅"
+          end)
+        ' "$REPORT" > comment-body.md
+
+    # Updates the same comment on each re-run instead of piling up a new one
+    # per push, using a hidden marker to find this PR's comment from a prior
+    # run.
+    - name: Comment on pull request
+      if: always()
+      uses: actions/github-script@v8
+      with:
+        script: |
+          const fs = require('fs');
+          let body = '### Liquibase Policy Checks\n\n⚠️ comment-body.md was not generated.';
+          try {
+            body = fs.readFileSync('comment-body.md', 'utf8');
+          } catch (e) {}
+          if (body.length > 60000) {
+            body = body.slice(0, 60000) + '\n... (truncated)';
+          }
+
+          const marker = `<!-- liquibase-policy-check -->`;
+          body = `${marker}\n${body}`;
+
+          const comments = await github.paginate(github.rest.issues.listComments, {
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+          });
+          const existing = comments.find(c => c.body && c.body.includes(marker));
+
+          if (existing) {
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: existing.id,
+              body,
+            });
+          } else {
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });
+          }
+
+    - name: Upload checks report
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: Policy-Checks
+        path: |
+          Checks.html
+          checks-report.json
+        if-no-files-found: warn
+        retention-days: 7
+
+    - name: Fail job if violations found
+      if: steps.checks.outcome != 'success'
+      run: exit 1
