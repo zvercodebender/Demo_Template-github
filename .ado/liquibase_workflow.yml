@@ -1,0 +1,173 @@
+###
+### This sample pipeline is intended as a starting point for integration between Liquibase Secure (formerly Liquibase Pro) and Azure DevOps pipelines
+### Review and update prior to use
+###
+### Liquibase version: 5.00.0+
+###
+### Get Liquibase: https://www.liquibase.com/download-secure
+### Liquibase sales: https://www.liquibase.com/contact-us
+### Liquibase support: https://support.liquibase.com
+###
+
+###
+### Prior to running the following files must exist in repository:
+###
+### 1. liquibase.flowfile.yaml
+###    Liquibase flow file
+###    https://docs.liquibase.com/secure/user-guide-5-0/what-is-a-flow-file
+###
+### 2. liquibase.checks-settings.conf
+###    Liquibase policy checks configuration file
+###    https://docs.liquibase.com/secure/user-guide-5-0/use-checks-settings-file
+###
+### 3. changelog.main.xml
+###    Root Liquibase changelog file
+###    https://docs.liquibase.com/secure/user-guide-5-0/what-is-a-changelog
+###
+
+###
+### Azure pipelines documentation: https://aka.ms/yaml
+###
+
+name: Liquibase Workflow
+
+###
+### Pipelines can be triggered manually or via events
+###
+trigger: none
+
+###
+### Set pipeline variables
+###
+parameters:
+  - name: labels
+    displayName: Label filters
+    type: string
+    default: NONE
+  - name: schemas
+    displayName: Schemas
+    type: string
+    default: dbo
+  - name: policyChecks
+    displayName: Policy checks T/F
+    type: string
+    default: T
+    values:
+      - T
+      - F
+  - name: driftDetection
+    displayName: Drift detection T/F
+    type: string
+    default: T
+    values:
+      - T
+      - F
+  - name: testRollbacks
+    displayName: Test rollback scripts T/F
+    type: string
+    default: T
+    values:
+      - T
+      - F
+
+###
+### Set Liquibase environment variables
+###
+variables:
+###
+### Prompts
+###
+### ADO doesn't currently allow optional parameters, so set if not equal to "NONE"
+###
+  ${{ if ne(parameters.labels, 'NONE') }}:
+    LB_LABELS: ${{ parameters.labels }}
+  LB_SCHEMAS: ${{ parameters.schemas }}
+  LB_TEST_CHECKS: ${{ parameters.policyChecks }}
+  LB_TEST_DRIFT: ${{ parameters.driftDetection }}
+  LB_TEST_ROLLBACKS: ${{ parameters.testRollbacks }}
+
+###
+### Liquibase specific
+###
+  LB_BASE_DIR: /liquibase/changelog
+  LB_ENVIRONMENT: DEV
+  LIQUIBASE_COMMAND_CHANGELOG_FILE: changelog.main.xml
+  LIQUIBASE_COMMAND_CHECKS_RUN_CHECKS_OUTPUT: issues
+  LIQUIBASE_COMMAND_CHECKS_RUN_CHECKS_SCRIPTS_ENABLED: true
+  LIQUIBASE_DBCLHISTORY_ENABLED: true
+  LIQUIBASE_LOG_FILE: /liquibase/changelog/liquibase.dev.log.json
+  LIQUIBASE_LOG_FORMAT: json_pretty
+  LIQUIBASE_LOG_LEVEL: warning
+  LIQUIBASE_MIRROR_CONSOLE_MESSAGES_TO_LOG: false
+  LIQUIBASE_REPORTS_OPEN: false
+  LIQUIBASE_SEARCH_PATH: /liquibase/changelog
+  LIQUIBASE_SHOW_BANNER: false
+
+###
+### These values should be pulled from pipeline variables or vault
+### https://learn.microsoft.com/en-us/azure/devops/pipelines/process/set-secret-variables?view=azure-devops&tabs=yaml%2Cbash
+### Secrets should include LIQUIBASE-URL, LIQUIBASE-USER, LIQUIBASE-PASSWORD, LIQUIBASE-LICENSE
+### Set these as secret pipeline variables in Pipelines > Edit > Variables
+###
+
+###
+### Agent pool - works on Windows or Linux agents (Microsoft-hosted or self-hosted)
+### as long as Docker is available on the agent. Update vmImage/pool as needed
+### for your environment.
+###
+stages:
+- stage: Liquibase
+  pool:
+    vmImage: ubuntu-latest
+  jobs:
+  - job: liquibase_workflow
+    displayName: Liquibase Workflow
+    workspace:
+      clean: all
+    steps:
+###
+### Checkout repository
+###
+    - checkout: self
+###
+### Running Liquibase
+### Uses pwsh so this step runs the same on Windows and Linux agents
+###
+    - pwsh: |
+        docker run --env LB_BASE_DIR --env LB_ENVIRONMENT --env LB_LABELS --env LB_SCHEMAS `
+        --env LB_TEST_CHECKS --env LB_TEST_DRIFT --env LB_TEST_ROLLBACKS `
+        --env LIQUIBASE_COMMAND_URL --env LIQUIBASE_COMMAND_USERNAME --env LIQUIBASE_COMMAND_PASSWORD `
+        --env LIQUIBASE_COMMAND_CHANGELOG_FILE --env LIQUIBASE_COMMAND_CHECKS_RUN_CHECKS_OUTPUT `
+        --env LIQUIBASE_COMMAND_CHECKS_RUN_CHECKS_SCRIPTS_ENABLED --env LIQUIBASE_DBCLHISTORY_ENABLED `
+        --env LIQUIBASE_LICENSE_KEY --env LIQUIBASE_LOG_FILE --env LIQUIBASE_LOG_FORMAT --env LIQUIBASE_LOG_LEVEL `
+        --env LIQUIBASE_MIRROR_CONSOLE_MESSAGES_TO_LOG --env LIQUIBASE_REPORTS_OPEN --env LIQUIBASE_SEARCH_PATH `
+        --env LIQUIBASE_SHOW_BANNER --rm -v "$(Build.SourcesDirectory):/liquibase/changelog" `
+        liquibase/liquibase-secure flow --flow-file=liquibase.flowfile.yaml
+      env:
+        LIQUIBASE_COMMAND_URL: $(LIQUIBASE-URL)
+        LIQUIBASE_COMMAND_USERNAME: $(LIQUIBASE-USER)
+        LIQUIBASE_COMMAND_PASSWORD: $(LIQUIBASE-PASSWORD)
+        LIQUIBASE_LICENSE_KEY: $(LIQUIBASE-LICENSE)
+      displayName: 'Running Liquibase'
+
+###
+### Copy files to artifacts
+###
+    - task: CopyFiles@2
+      inputs:
+        contents: |
+          *.html
+          *.json
+        targetFolder: $(Build.ArtifactStagingDirectory)
+      displayName: 'Copying files'
+      condition: succeededOrFailed()
+
+###
+### Update artifacts
+###
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathToPublish: $(Build.ArtifactStagingDirectory)
+        artifactName: Artifacts-$(LB_ENVIRONMENT)
+      displayName: 'Updating artifacts'
+      condition: succeededOrFailed()

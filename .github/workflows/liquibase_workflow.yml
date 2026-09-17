@@ -1,0 +1,139 @@
+###
+### This sample pipeline is intended as a starting point for integration between Liquibase Secure (formerly Liquibase Pro) and GitHub pipelines
+### Review and update prior to use
+###
+### Liquibase version: 5.00.0+
+###
+### Get Liquibase: https://www.liquibase.com/download-secure
+### Liquibase sales: https://www.liquibase.com/contact-us
+### Liquibase support: https://support.liquibase.com
+###
+
+###
+### Prior to running the following files must exist in repository:
+###
+### 1. liquibase.flowfile.yaml
+###    Liquibase flow file
+###    https://docs.liquibase.com/secure/user-guide-5-0/what-is-a-flow-file
+###
+### 2. liquibase.checks-settings.conf
+###    Liquibase policy checks configuration file
+###    https://docs.liquibase.com/secure/user-guide-5-0/use-checks-settings-file
+###
+### 3. changelog.main.xml
+###    Root Liquibase changelog file
+###    https://docs.liquibase.com/secure/user-guide-5-0/what-is-a-changelog
+###
+
+###
+### GitHub Actions documentation: https://docs.github.com/en/actions
+###
+
+name: Liquibase Workflow
+
+###
+### Pipelines can be triggered manually or via events
+###
+on:
+  workflow_dispatch:
+    inputs:
+      labels:
+        type: string
+        description: Label filters
+      schemas:
+        type: string
+        description: Schemas
+        default: HumanResources,Person,Production,Purchasing,Sales
+      policy-checks:
+        type: choice
+        description: Policy checks T/F
+        required: true
+        options:
+        - T
+        - F
+      drift-detection:
+        type: choice
+        description: Drift detection T/F
+        required: true
+        options:
+        - T
+        - F
+      test-rollbacks:
+        type: choice
+        description: Test rollback scripts T/F
+        required: true
+        options:
+        - T
+        - F
+
+###
+### Set Liquibase environment variables
+###
+env:
+###
+### Prompts
+###
+    LB_LABELS: ${{ github.event.inputs.labels }}
+    LB_TEST_CHECKS: ${{ github.event.inputs.policy-checks }}
+    LB_TEST_DRIFT: ${{ github.event.inputs.drift-detection }}
+    LB_TEST_ROLLBACKS: ${{ github.event.inputs.test-rollbacks }}
+
+###
+### Liquibase specific
+###
+    LB_BASE_DIR: ./
+    LB_ENVIRONMENT: DEV
+    LIQUIBASE_COMMAND_CHANGELOG_FILE: changelog.main.xml
+    LIQUIBASE_COMMAND_CHECKS_RUN_CHECKS_OUTPUT: issues
+    LIQUIBASE_COMMAND_CHECKS_RUN_CHECKS_SCRIPTS_ENABLED: true
+    LIQUIBASE_DBCLHISTORY_ENABLED: true
+    LIQUIBASE_LOG_FILE: ./liquibase.dev.log.json
+    LIQUIBASE_LOG_FORMAT: json_pretty
+    LIQUIBASE_LOG_LEVEL: warning
+    LIQUIBASE_MIRROR_CONSOLE_MESSAGES_TO_LOG: false
+    LIQUIBASE_REPORTS_OPEN: false
+    LIQUIBASE_SEARCH_PATH: ./
+    LIQUIBASE_SHOW_BANNER: false
+
+###
+### These values should be pulled from a vault
+###
+    LIQUIBASE_COMMAND_URL: ${{ secrets.LIQUIBASE_DEV_URL }}
+    LIQUIBASE_COMMAND_USERNAME: ${{ secrets.LIQUIBASE_DEV_USER }}
+    LIQUIBASE_COMMAND_PASSWORD: ${{ secrets.LIQUIBASE_DEV_PASSWORD }}
+    LIQUIBASE_LICENSE_KEY: ${{ secrets.LIQUIBASE_LICENSE }}
+
+jobs:
+  liquibase-workflow:
+    runs-on: self-hosted
+
+    steps:
+    ###
+    ### Checkout repository (use default token)
+    ###
+    - name: Checkout repository
+      uses: actions/checkout@v7
+
+    ###
+    ### Setup and run Liquibase
+    ###
+    - name: Setup Liquibase
+      uses: liquibase/setup-liquibase@v3.0.0
+      with:
+        edition: "secure"
+        version: "5.2.1"
+
+    - name: Running Liquibase
+      run: liquibase flow --flow-file=liquibase.flowfile.yaml
+
+    ###
+    ### Upload artifacts
+    ###
+    - name: Update artifacts
+      if: success() || failure()
+      uses: actions/upload-artifact@v6
+      with:
+        name: Artifacts-${{ env.LB_ENVIRONMENT }}
+        path: |
+          **/*.json
+          **/*.html

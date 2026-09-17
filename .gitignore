@@ -1,0 +1,3 @@
+.liquibase
+liquibase.checks-settings.conf.backup*
+liquibase.properties

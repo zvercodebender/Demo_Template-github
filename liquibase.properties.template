@@ -1,0 +1,44 @@
+###
+### A properties files is typically used for local testing only
+### https://docs.liquibase.com/concepts/connections/creating-config-properties.html
+###
+
+###
+### Connectivity
+###
+# Update the url below for your database
+# SQL Server:  jdbc:sqlserver://hostname:1433;databaseName=dbname;trustServerCertificate=true
+# PostgreSQL:  jdbc:postgresql://hostname:5432/dbname
+# Oracle:      jdbc:oracle:thin:@hostname:1521:SID
+# MySQL:       jdbc:mysql://hostname:3306/dbname
+# MongoDB:     mongodb://hostname:27017/dbname
+url: jdbc:sqlserver://hostname:1433;databaseName=databaseName;trustServerCertificate=true
+username: db_user
+password: db_password
+###
+### Root Changelog/Search Path
+###
+changelogFile: changelog.main.xml
+# Mac/Linux
+# liquibase.searchPath: /path/to/extracted/folder
+# Windows
+liquibase.searchPath: C:/Liquibase/POC
+###
+### Policy Check Options
+### https://docs.liquibase.com/liquibase-pro/policy-checks/home.html
+###
+liquibase.command.checksOutput: issues
+liquibase.command.checksScope: changelog
+liquibase.command.checksScriptsEnabled: true
+liquibase.command.checks.run.changesetFilter: pending
+###
+### Misc. Options
+###
+liquibase.dbclhistory.enabled: true
+liquibase.reports.enabled: false
+liquibase.reports.open: false
+liquibase.showBanner: false
+###
+### Secure key
+###
+licenseKey: lb_key
