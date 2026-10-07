@@ -101,7 +101,7 @@ env:
 ###
     LIQUIBASE_COMMAND_CHECKS_RUN_ASSIGNMENT_ID: ebea64ed-e973-43f6-a3f4-fc3e568185e1
     LIQUIBASE_COMMAND_CHECKS_SHOW_ASSIGNMENT_ID: ebea64ed-e973-43f6-a3f4-fc3e568185e1
-    LIQUIBASE_PLATFORM_API_URL: https://insights-demo.liquibase.net
+    LIQUIBASE_PLATFORM_API_URL: https://insights-demo.liquibase.net/api
 
 ###
 ### These values should be pulled from a vault
