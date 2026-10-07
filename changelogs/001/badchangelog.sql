@@ -4,3 +4,4 @@
 -- --comment Release 1.0.0
 -- SELECT * FROM ORGANIZATIONS;
 
+-- Removed bad sql
