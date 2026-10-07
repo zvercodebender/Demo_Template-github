@@ -41,6 +41,14 @@ jobs:
       LIQUIBASE_SEARCH_PATH: ./
 
       ###
+      ### Policy checks come from a Governance assignment on the Liquibase
+      ### Secure server instead of liquibase.checks-settings.conf
+      ###
+      LIQUIBASE_COMMAND_CHECKS_RUN_ASSIGNMENT_ID: ebea64ed-e973-43f6-a3f4-fc3e568185e1
+      LIQUIBASE_PLATFORM_API_URL: https://insights-demo.liquibase.net
+      LIQUIBASE_INSIGHTS_AUTH_TOKEN: ${{ secrets.LIQUIBASE_INSIGHTS_AUTH_TOKEN }}
+
+      ###
       ### These values should be pulled from a vault - same pattern as
       ### liquibase_workflow.yml
       ###
@@ -87,7 +95,7 @@ jobs:
       uses: liquibase/setup-liquibase@v3.0.0
       with:
         edition: "secure"
-        version: "5.2.1"
+        version: "6.0.0"
 
     - name: Setup Liquibase (attempt 2)
       id: sl2
@@ -97,7 +105,7 @@ jobs:
       uses: liquibase/setup-liquibase@v3.0.0
       with:
         edition: "secure"
-        version: "5.2.1"
+        version: "6.0.0"
 
     - name: Setup Liquibase (attempt 3)
       id: sl3
@@ -106,7 +114,7 @@ jobs:
       uses: liquibase/setup-liquibase@v3.0.0
       with:
         edition: "secure"
-        version: "5.2.1"
+        version: "6.0.0"
 
     # Read-only: policy checks only, never update/rollback. continue-on-error
     # here is deliberate - a violation should still get commented on the PR,

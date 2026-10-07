@@ -2,7 +2,7 @@
 ### This sample pipeline is intended as a starting point for integration between Liquibase Secure (formerly Liquibase Pro) and GitHub pipelines
 ### Review and update prior to use
 ###
-### Liquibase version: 5.00.0+
+### Liquibase version: 6.0.0+
 ###
 ### Get Liquibase: https://www.liquibase.com/download-secure
 ### Liquibase sales: https://www.liquibase.com/contact-us
@@ -96,12 +96,21 @@ env:
     LIQUIBASE_SHOW_BANNER: false
 
 ###
+### Policy checks come from a Governance assignment on the Liquibase Secure
+### server instead of liquibase.checks-settings.conf
+###
+    LIQUIBASE_COMMAND_CHECKS_RUN_ASSIGNMENT_ID: ebea64ed-e973-43f6-a3f4-fc3e568185e1
+    LIQUIBASE_COMMAND_CHECKS_SHOW_ASSIGNMENT_ID: ebea64ed-e973-43f6-a3f4-fc3e568185e1
+    LIQUIBASE_PLATFORM_API_URL: https://insights-demo.liquibase.net
+
+###
 ### These values should be pulled from a vault
 ###
     LIQUIBASE_COMMAND_URL: ${{ secrets.LIQUIBASE_COMMAND_URL }}
     LIQUIBASE_COMMAND_USERNAME: ${{ secrets.LIQUIBASE_COMMAND_USERNAME }}
     LIQUIBASE_COMMAND_PASSWORD: ${{ secrets.LIQUIBASE_COMMAND_PASSWORD }}
     LIQUIBASE_LICENSE_KEY: ${{ secrets.LIQUIBASE_LICENSE_KEY }}
+    LIQUIBASE_INSIGHTS_AUTH_TOKEN: ${{ secrets.LIQUIBASE_INSIGHTS_AUTH_TOKEN }}
 
 jobs:
   liquibase-workflow:
@@ -130,7 +139,7 @@ jobs:
       uses: liquibase/setup-liquibase@v3.0.0
       with:
         edition: "secure"
-        version: "5.2.1"
+        version: "6.0.0"
 
     - name: Running Liquibase
       run: liquibase flow --flow-file=liquibase.flowfile.yaml
