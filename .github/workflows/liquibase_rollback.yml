@@ -1,0 +1,148 @@
+###
+### Rolls back the last N deployed changesets, then takes a snapshot of the
+### database so the post-rollback state is recorded alongside the run.
+###
+### Liquibase version: 6.0.0+
+###
+### Prior to running the following files must exist in repository:
+###
+### 1. changelog.main.xml
+###    Root Liquibase changelog file - every changeset being rolled back
+###    needs a rollback block (or be auto-rollbackable)
+###    https://docs.liquibase.com/secure/user-guide-5-0/what-is-a-changelog
+###
+
+name: Liquibase Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      count:
+        type: number
+        description: Number of changesets to roll back
+        required: true
+        default: 1
+      labels:
+        type: string
+        description: Label filters (optional)
+
+###
+### Never let two rollbacks run against the same database at once
+###
+concurrency:
+  group: liquibase-rollback
+  cancel-in-progress: false
+
+###
+### Set Liquibase environment variables
+###
+env:
+###
+### Prompts
+###
+    LB_COUNT: ${{ github.event.inputs.count }}
+    LB_LABELS: ${{ github.event.inputs.labels }}
+
+###
+### Liquibase specific
+###
+    LB_ENVIRONMENT: DEV
+    LIQUIBASE_COMMAND_CHANGELOG_FILE: changelog.main.xml
+    LIQUIBASE_LOG_FILE: ./liquibase.rollback.log.json
+    LIQUIBASE_LOG_FORMAT: json_pretty
+    LIQUIBASE_LOG_LEVEL: warning
+    LIQUIBASE_REPORTS_OPEN: false
+    LIQUIBASE_SEARCH_PATH: ./
+    LIQUIBASE_SHOW_BANNER: false
+
+###
+### These values should be pulled from a vault
+###
+    LIQUIBASE_COMMAND_URL: ${{ secrets.LIQUIBASE_COMMAND_URL }}
+    LIQUIBASE_COMMAND_USERNAME: ${{ secrets.LIQUIBASE_COMMAND_USERNAME }}
+    LIQUIBASE_COMMAND_PASSWORD: ${{ secrets.LIQUIBASE_COMMAND_PASSWORD }}
+    LIQUIBASE_LICENSE_KEY: ${{ secrets.LIQUIBASE_LICENSE_KEY }}
+    LIQUIBASE_PLATFORM_API_URL: https://insights-demo.liquibase.net/api
+    LIQUIBASE_INSIGHTS_AUTH_TOKEN: ${{ secrets.LIQUIBASE_INSIGHTS_AUTH_TOKEN }}
+
+jobs:
+  liquibase-rollback:
+    runs-on: demo-template-github-runners
+
+    steps:
+    - name: Validate rollback count
+      run: |
+        if ! [[ "$LB_COUNT" =~ ^[1-9][0-9]*$ ]]; then
+          echo "::error::count must be a positive whole number (got '$LB_COUNT')"
+          exit 1
+        fi
+
+    - name: Checkout repository
+      uses: actions/checkout@v7
+
+    - name: Setup Java
+      uses: actions/setup-java@v5
+      with:
+        distribution: temurin
+        java-version: "17"
+
+    - name: Setup Liquibase
+      uses: liquibase/setup-liquibase@v3.0.0
+      with:
+        edition: "secure"
+        version: "6.0.0"
+
+    ###
+    ### Show what is about to be rolled back before touching the database
+    ###
+    - name: History before rollback
+      run: liquibase history
+
+    - name: Preview rollback SQL
+      run: |
+        liquibase rollback-count-sql \
+          --count="$LB_COUNT" \
+          ${LB_LABELS:+--label-filter="$LB_LABELS"} \
+          --output-file=rollback-preview.sql
+        cat rollback-preview.sql
+
+    - name: Roll back ${{ github.event.inputs.count }} changeset(s)
+      id: rollback
+      run: |
+        liquibase rollback-count \
+          --count="$LB_COUNT" \
+          ${LB_LABELS:+--label-filter="$LB_LABELS"} \
+          --report-enabled=true \
+          --report-path=. \
+          --report-name="Rollback_${LB_ENVIRONMENT}.html"
+
+    ###
+    ### Snapshot the database after the rollback. Runs even if the rollback
+    ### failed part-way, so the state it left behind is still recorded.
+    ###
+    - name: Snapshot database after rollback
+      if: always() && steps.rollback.outcome != 'skipped'
+      run: |
+        liquibase snapshot \
+          --snapshot-format=json \
+          --output-file="snapshot_${LB_ENVIRONMENT}_post-rollback_${GITHUB_RUN_NUMBER}.json"
+
+    - name: History after rollback
+      if: always() && steps.rollback.outcome != 'skipped'
+      run: liquibase history
+
+    ###
+    ### Store the snapshot, rollback report, preview SQL and log
+    ###
+    - name: Upload snapshot and reports
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: Rollback-${{ env.LB_ENVIRONMENT }}-${{ github.run_number }}
+        path: |
+          snapshot_*.json
+          rollback-preview.sql
+          Rollback_*.html
+          liquibase.rollback.log.json
+        if-no-files-found: warn
+        retention-days: 90
