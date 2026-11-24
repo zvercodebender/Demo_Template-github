@@ -143,8 +143,8 @@ jobs:
 
     ###
     ### Drift detection baseline: restore the snapshot saved after the last
-    ### successful deploy. With no baseline yet (first run), skip drift - this
-    ### run's snapshot becomes the baseline for the next one.
+    ### successful deploy. With no baseline yet (first run), snapshot the
+    ### database now so drift still runs (and reports to the server) this run.
     ###
     - name: Restore drift snapshot
       uses: actions/cache/restore@v4
@@ -153,13 +153,15 @@ jobs:
         key: liquibase-snapshot-${{ env.LB_ENVIRONMENT }}-${{ github.run_id }}
         restore-keys: liquibase-snapshot-${{ env.LB_ENVIRONMENT }}-
 
-    - name: Check drift baseline
+    - name: Create drift baseline if missing
       run: |
-        if [ "$LB_TEST_DRIFT" = "T" ] && [ ! -f "snapshots/${LB_ENVIRONMENT}_Snapshot.json" ]; then
-          echo "::warning::No drift baseline snapshot yet - skipping drift detection this run. The next run will diff against this run's snapshot."
-          echo "LB_TEST_DRIFT=F" >> "$GITHUB_ENV"
-        fi
         mkdir -p snapshots
+        if [ "$LB_TEST_DRIFT" = "T" ] && [ ! -f "snapshots/${LB_ENVIRONMENT}_Snapshot.json" ]; then
+          echo "::warning::No cached drift baseline - snapshotting the current database as the baseline. This run will report no drift; later runs diff against it."
+          liquibase snapshot \
+            --snapshot-format=json \
+            --output-file="snapshots/${LB_ENVIRONMENT}_Snapshot.json"
+        fi
 
     - name: Running Liquibase
       run: liquibase flow --flow-file=liquibase.flowfile.yaml
