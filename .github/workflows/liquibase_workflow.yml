@@ -141,8 +141,35 @@ jobs:
         edition: "secure"
         version: "6.0.0"
 
+    ###
+    ### Drift detection baseline: restore the snapshot saved after the last
+    ### successful deploy. With no baseline yet (first run), skip drift - this
+    ### run's snapshot becomes the baseline for the next one.
+    ###
+    - name: Restore drift snapshot
+      uses: actions/cache/restore@v4
+      with:
+        path: snapshots/${{ env.LB_ENVIRONMENT }}_Snapshot.json
+        key: liquibase-snapshot-${{ env.LB_ENVIRONMENT }}-${{ github.run_id }}
+        restore-keys: liquibase-snapshot-${{ env.LB_ENVIRONMENT }}-
+
+    - name: Check drift baseline
+      run: |
+        if [ "$LB_TEST_DRIFT" = "T" ] && [ ! -f "snapshots/${LB_ENVIRONMENT}_Snapshot.json" ]; then
+          echo "::warning::No drift baseline snapshot yet - skipping drift detection this run. The next run will diff against this run's snapshot."
+          echo "LB_TEST_DRIFT=F" >> "$GITHUB_ENV"
+        fi
+        mkdir -p snapshots
+
     - name: Running Liquibase
       run: liquibase flow --flow-file=liquibase.flowfile.yaml
+
+    - name: Save drift snapshot
+      if: success() && hashFiles(format('snapshots/{0}_Snapshot.json', env.LB_ENVIRONMENT)) != ''
+      uses: actions/cache/save@v4
+      with:
+        path: snapshots/${{ env.LB_ENVIRONMENT }}_Snapshot.json
+        key: liquibase-snapshot-${{ env.LB_ENVIRONMENT }}-${{ github.run_id }}
 
     ###
     ### Upload artifacts
